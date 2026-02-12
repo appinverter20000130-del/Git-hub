@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bio-Sim Pro v5.1 | Complete Cell Atlas</title><script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;700&display=swap');
+        
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Vazirmatn', sans-serif;
+            background: radial-gradient(circle at center, #050a1a 0%, #010205 100%);
+            color: #e2e8f0;
+        }
+
+        .glass {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 1.5rem;
+        }
+
+        .neon-glow {
+            box-shadow: 0 0 25px rgba(59, 130, 246, 0.15);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: rgba(59, 130, 246, 0.5); border-radius: 10px; }
+
+        .stat-bar { height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; }
+        .stat-fill { height: 100%; transition: width 0.8s ease; }
+
+        #notification-zone { position: fixed; top: 20px; right: 20px; z-index: 3000; }
+        .toast-msg {
+            padding: 14px 24px; background: #3b82f6; color: white; border-radius: 12px;
+            margin-bottom: 10px; font-size: 13px; animation: slideIn 0.4s ease forwards;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        }
+
+        @keyframes slideIn { from { transform: translateX(120%); } to { transform: translateX(0); } }
+
+        .exam-overlay { background: rgba(2, 6, 23, 0.95); backdrop-filter: blur(15px); }
+        
+        .touch-hint {
+            position: absolute; bottom: 20px; left: 20px;
+            font-size: 10px; color: rgba(255,255,255,0.3);
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="notification-zone"></div>
+    <div class="touch-hint">🖱️ چرخش: کلیک چپ | 🖱️ جابجایی: کلیک راست | 🎡 زوم: اسکرول</div>
+
+    <!-- UI: Stats Panel -->
+    <div class="absolute top-6 left-6 w-80 space-y-4 pointer-events-none">
+        <div class="glass p-6 pointer-events-auto neon-glow">
+            <div class="flex items-center gap-3 mb-5">
+                <div class="w-3 h-3 bg-blue-500 rounded-full animate-pulse shadow-[0_0_10px_#3b82f6]"></div>
+                <h1 class="font-bold text-lg text-blue-400">اطلس جامع سلولی v5.1</h1>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <div class="flex justify-between text-[11px] mb-1.5"><span>متابولیسم (ATP)</span><span id="atp-t">۹۰٪</span></div>
+                    <div class="stat-bar"><div id="atp-b" class="stat-fill bg-blue-500" style="width: 90%"></div></div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-[11px] mb-1.5"><span>یکپارچگی غشا</span><span id="enz-t">۱۰۰٪</span></div>
+                    <div class="stat-bar"><div id="enz-b" class="stat-fill bg-emerald-500" style="width: 100%"></div></div>
+                </div>
+                <div class="pt-3 grid grid-cols-3 gap-2">
+                    <button onclick="changeMode('normal')" class="text-[10px] py-1.5 hover:bg-blue-500/20 transition rounded border border-blue-500/30">واقع‌گرا</button>
+                    <button onclick="changeMode('xray')" class="text-[10px] py-1.5 hover:bg-white/10 transition rounded border border-white/10">X-Ray</button>
+                    <button onclick="changeMode('wire')" class="text-[10px] py-1.5 hover:bg-white/10 transition rounded border border-white/10">شبکه‌ای</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="glass p-4 pointer-events-auto">
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="runExam()" class="bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/30 p-3 rounded-xl transition-all flex flex-col items-center">
+                    <span class="text-xl">📝</span>
+                    <span class="text-[11px] mt-1 font-bold">آزمون جامع</span>
+                </button>
+                <button onclick="injectNutrition()" class="bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/30 p-3 rounded-xl transition-all flex flex-col items-center">
+                    <span class="text-xl">🔋</span>
+                    <span class="text-[11px] mt-1 font-bold">شارژ سلولی</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- UI: Right Sidebar (Organelle Catalog) -->
+    <div class="absolute top-6 right-6 w-72 pointer-events-none">
+        <div class="glass p-4 pointer-events-auto h-[85vh] flex flex-col overflow-hidden shadow-2xl border border-white/5">
+            <h3 class="text-[10px] font-bold text-slate-500 mb-4 px-2 uppercase tracking-widest flex justify-between">
+                <span>فهرست کل اجزا</span>
+                <span class="text-blue-500">۱۲ مورد</span>
+            </h3>
+            <div id="organelle-list" class="overflow-y-auto space-y-2 pr-1 custom-scroll">
+                <!-- Dynamic Content -->
+            </div>
+        </div>
+    </div>
+
+    <!-- UI: Bottom Detailed Info Panel -->
+    <div id="info-panel" class="absolute bottom-10 left-1/2 -translate-x-1/2 w-[92%] max-w-5xl pointer-events-none hidden">
+        <div class="glass p-8 pointer-events-auto border-t-4 border-blue-500 flex gap-8 items-start relative overflow-hidden shadow-[0_-20px_50px_rgba(0,0,0,0.5)]">
+            <div class="absolute -right-10 -bottom-10 text-[200px] opacity-[0.03] select-none" id="bg-icon">🧬</div>
+            <div id="info-icon" class="text-6xl p-5 bg-blue-500/10 rounded-3xl border border-blue-500/20 shadow-inner">🧬</div>
+            <div class="flex-1 space-y-5">
+                <div class="flex items-center gap-4">
+                    <h2 id="info-title" class="text-3xl font-bold text-blue-400">Nucleus</h2>
+                    <span class="px-3 py-1 bg-blue-500/20 rounded-full text-[10px] text-blue-300 uppercase font-bold tracking-widest border border-blue-500/20">Data Sheet v5</span>
+                </div>
+                <div id="info-desc" class="text-sm text-slate-300 leading-8 text-justify pl-4"></div>
+                <div class="grid grid-cols-3 gap-4 pt-2">
+                    <div class="bg-white/5 p-4 rounded-xl border border-white/5"><span class="text-[10px] text-slate-500 block mb-1">نقش بیولوژیک:</span><span id="info-role" class="text-xs text-blue-200 font-bold"></span></div>
+                    <div class="bg-white/5 p-4 rounded-xl border border-white/5"><span class="text-[10px] text-slate-500 block mb-1">ساختار فیزیکی:</span><span id="info-structure" class="text-xs text-blue-200 font-bold"></span></div>
+                    <div class="bg-white/5 p-4 rounded-xl border border-white/5"><span class="text-[10px] text-slate-500 block mb-1">وضعیت سلامت:</span><span class="text-xs text-emerald-400 font-bold">بهینه (Optimal)</span></div>
+                </div>
+            </div>
+            <button onclick="closeInfo()" class="text-slate-500 hover:text-white text-3xl transition-colors p-2">✕</button>
+        </div>
+    </div>
+
+    <!-- Exam Modal -->
+    <div id="exam-modal" class="fixed inset-0 z-[4000] exam-overlay hidden items-center justify-center p-6">
+        <div class="glass max-w-2xl w-full p-12 relative neon-glow shadow-[0_0_100px_rgba(59,130,246,0.3)]">
+            <div id="exam-content">
+                <div class="flex justify-between items-center mb-10 border-b border-white/10 pb-6">
+                    <div>
+                        <h2 class="text-2xl font-bold text-white mb-1">آزمون تخصص سلولی</h2>
+                        <p class="text-xs text-slate-500">سوالات بر اساس آخرین استانداردهای بیولوژی</p>
+                    </div>
+                    <div class="text-center">
+                        <div id="score" class="text-3xl font-black text-blue-500">۰</div>
+                        <div class="text-[10px] text-slate-500 uppercase">امتیاز کل</div>
+                    </div>
+                </div>
+                <h2 id="q-text" class="text-xl font-bold mb-10 leading-relaxed text-blue-100">در حال بارگذاری سوال...</h2>
+                <div id="options" class="grid grid-cols-1 gap-4"></div>
+            </div>
+            <button onclick="stopExam()" class="absolute top-6 left-6 text-slate-500 hover:text-red-400 transition-colors">توقف آزمون ✕</button>
+        </div>
+    </div>
+
+    <script>
+        let scene, camera, renderer, cellGroup, membrane, controls;
+        let organelles = [];
+        let atp = 90;
+
+        const DATA = {
+            'Nucleus': { 
+                name: 'هسته (Nucleus)', icon: '🧠', color: 0xff3366, 
+                desc: 'هسته بزرگترین و مهم‌ترین اندامک سلول است که به عنوان مرکز فرماندهی عمل می‌کند. این بخش حاوی ماده ژنتیکی (DNA) است که دستورالعمل‌های ساخت پروتئین و تقسیم سلولی را در خود دارد. غشای هسته دارای منافذ ریزی است که تبادل مواد بین هسته و سیتوپلاسم را با دقت کنترل می‌کند.',
+                role: 'مدیریت ژنتیک و فرماندهی سلول', structure: 'غشای دوجداره منفذدار و کروماتین',
+                q: 'مرکز اصلی کنترل فعالیت‌های سلول و محل ذخیره DNA کجاست؟' 
+            },
+            'Nucleolus': { 
+                name: 'هستک (Nucleolus)', icon: '🎯', color: 0xff66aa, 
+                desc: 'هستک ناحیه‌ای متراکم درون هسته است که وظیفه اصلی آن تولید RNA ریبوزومی (rRNA) و جفت کردن آن با پروتئین‌ها برای ساخت زیرواحدهای ریبوزوم است. سلول‌هایی که فعالیت پروتئین‌سازی زیادی دارند، هستک‌های بزرگتری دارند.',
+                role: 'تولید و مونتاژ ریبوزوم‌ها', structure: 'تجمعات متراکم RNA و پروتئین',
+                q: 'کدام بخش در داخل هسته مسئول ساخت ریبوزوم‌هاست؟' 
+            },
+            'Mito': { 
+                name: 'میتوکندری (Mitochondria)', icon: '⚡', color: 0xff4400, 
+                desc: 'میتوکندری‌ها نیروگاه‌های تولید انرژی هستند. آن‌ها از طریق فرآیند تنفس سلولی، انرژی موجود در مواد غذایی را به مولکول ATP تبدیل می‌کنند. این اندامک دارای غشای داخلی چین‌خورده‌ای به نام کریستا است که سطح لازم برای واکنش‌های شیمیایی را افزایش می‌دهد.',
+                role: 'تولید انرژی (ATP)', structure: 'غشای دو لایه با چین‌خوردگی داخلی',
+                q: 'کدام اندامک با استفاده از قند و اکسیژن، انرژی (ATP) تولید می‌کند؟' 
+            },
+            'Ribosome': { 
+                name: 'ریبوزوم (Ribosome)', icon: '💠', color: 0xffffff, 
+                desc: 'ریبوزوم‌ها کوچکترین اما پرشمارترین اجزای سلول هستند. آن‌ها یا در سیتوپلاسم شناورند یا به شبکه آندوپلاسمی چسبیده‌اند. وظیفه آن‌ها ترجمه کدهای ژنتیکی به زنجیره‌های پروتئینی است.',
+                role: 'سنتز و ساخت پروتئین', structure: 'دو زیرواحد پروتئینی و RNA',
+                q: 'کدام جزء سلول وظیفه ترجمه رمزهای ژنتیکی و ساخت پروتئین را بر عهده دارد؟' 
+            },
+            'ER_Rough': { 
+                name: 'آندوپلاسمی زبر (RER)', icon: '🎢', color: 0x0088ff, 
+                desc: 'این شبکه گسترده به دلیل وجود ریبوزوم‌ها بر سطحش، "زبر" نامیده می‌شود. وظیفه آن تولید پروتئین‌های ترشحی (مثل هورمون‌ها) و پروتئین‌های غشایی است. پروتئین‌ها پس از ساخت در اینجا بسته‌بندی شده و به گلژی ارسال می‌شوند.',
+                role: 'ساخت پروتئین‌های ترشحی و انتقالی', structure: 'شبکه کیسه‌ای پوشیده از ریبوزوم',
+                q: 'شبکه آندوپلاسمی که در ساخت پروتئین نقش دارد، چه نام دارد؟' 
+            },
+            'ER_Smooth': { 
+                name: 'آندوپلاسمی صاف (SER)', icon: '🛤️', color: 0x33ccff, 
+                desc: 'این بخش فاقد ریبوزوم است. تخصص آن در سنتز لیپیدها (چربی‌ها)، متابولیسم کربوهیدرات‌ها و به ویژه سم‌زدایی از داروها و مواد شیمیایی است. همچنین محل ذخیره یون کلسیم در سلول‌های ماهیچه‌ای است.',
+                role: 'سنتز لیپید و سم‌زدایی مواد', structure: 'سیستم لوله‌ای غشایی بدون ریبوزوم',
+                q: 'کدام اندامک در سلول کبد وظیفه سم‌زدایی از مواد را بر عهده دارد؟' 
+            },
+            'Golgi': { 
+                name: 'دستگاه گلژی (Golgi)', icon: '📦', color: 0xffcc00, 
+                desc: 'دستگاه گلژی شبیه به یک اداره پست عمل می‌کند. پروتئین‌های رسیده از شبکه آندوپلاسمی در اینجا اصلاح نهایی می‌شوند، دسته‌بندی می‌گردند و درون کیسه‌های کوچکی به نام وزیکول به مقصد نهایی (داخل یا خارج سلول) فرستاده می‌شوند.',
+                role: 'اصلاح، بسته‌بندی و توزیع پروتئین', structure: 'کیسه‌های تخت غشایی موازی',
+                q: 'وظیفه بسته‌بندی و نشانه‌گذاری مواد برای خروج از سلول با کدام اندامک است؟' 
+            },
+            'Lyso': { 
+                name: 'لیزوزوم (Lysosome)', icon: '♻️', color: 0x00ff88, 
+                desc: 'لیزوزوم‌ها کیسه‌های حاوی آنزیم‌های تجزیه‌کننده هستند. آن‌ها مواد زائد، اندامک‌های پیر و ذرات خارجی (مثل باکتری‌ها) را هضم و بازیافت می‌کنند. به همین دلیل به آن‌ها "کیسه خودکشی" یا "واحد بازیافت" نیز می‌گویند.',
+                role: 'گوارش درون‌سلولی و دفاع', structure: 'وزیکول حاوی آنزیم هیدرولیزکننده',
+                q: 'کدام اندامک مسئول تجزیه مواد زائد و بازیافت اجزای سلولی است؟' 
+            },
+            'Peroxisome': { 
+                name: 'پراکسی‌زوم (Peroxisome)', icon: '🧪', color: 0xff9900, 
+                desc: 'اندامک‌های کروی کوچکی هستند که حاوی آنزیم‌های اکسیدکننده می‌باشند. آن‌ها اسیدهای چرب را می‌شکنند و الکل را سم‌زدایی می‌کنند. در این فرآیند آب‌اکسیژنه تولید می‌شود که بلافاصله توسط آنزیم کاتالاز به آب و اکسیژن تبدیل می‌گردد.',
+                role: 'اکسیداسیون اسید چرب و سم‌زدایی', structure: 'وزیکول‌های حاوی آنزیم اکسیداز',
+                q: 'کدام اندامک مسئول شکستن اسیدهای چرب و تولید کاتالاز است؟' 
+            },
+            'Vacuole': { 
+                name: 'واکوئل (Vacuole)', icon: '💧', color: 0x5555ff, 
+                desc: 'در سلول‌های جانوری واکوئل‌ها کوچک هستند و وظیفه ذخیره موقت آب، مواد غذایی یا مواد دفعی را دارند. آن‌ها به حفظ تعادل مایعات درون سلول کمک می‌کنند.',
+                role: 'ذخیره آب و مواد غذایی', structure: 'کیسه غشایی حاوی مایعات',
+                q: 'کدام جزء سلول به عنوان انبار ذخیره آب و املاح عمل می‌کند؟' 
+            },
+            'Centriole': { 
+                name: 'سانتریول (Centriole)', icon: '🥢', color: 0xaaaaaa, 
+                desc: 'سانتریول‌ها ساختارهای استوانه‌ای هستند که معمولاً جفتی دیده می‌شوند. آن‌ها در سازماندهی اسکلت سلولی و به خصوص در تشکیل دوک‌های تقسیم هنگام تقسیم سلولی نقش حیاتی دارند تا کروموزوم‌ها به درستی جدا شوند.',
+                role: 'سازماندهی تقسیم سلولی', structure: '۹ دسته میکروتوبول سه‌تایی',
+                q: 'کدام ساختار در تشکیل دوک‌های تقسیم سلولی نقش دارد؟' 
+            },
+            'Cytoskeleton': { 
+                name: 'اسکلت سلولی', icon: '🕸️', color: 0x444444, 
+                desc: 'شبکه‌ای از رشته‌های پروتئینی (ریز لوله‌ها و ریز رشته‌ها) که در کل سیتوپلاسم پخش شده‌اند. این شبکه باعث حفظ شکل سلول، جابجایی اندامک‌ها و حرکت خود سلول می‌شود.',
+                role: 'حفظ شکل و استحکام سلول', structure: 'رشته‌ها و لوله‌های پروتئینی',
+                q: 'چه عاملی باعث حفظ شکل هندسی سلول و پایداری آن می‌شود؟' 
+            }
+        };
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 30, 60);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            cellGroup = new THREE.Group();
+            scene.add(cellGroup);
+
+            // High Fidelity Lighting
+            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            const light1 = new THREE.PointLight(0x3b82f6, 1.5, 150);
+            light1.position.set(30, 30, 30);
+            scene.add(light1);
+            
+            const light2 = new THREE.PointLight(0xff3366, 0.8, 100);
+            light2.position.set(-30, -20, 20);
+            scene.add(light2);
+
+            createFullCell();
+            populateList();
+            animate();
+
+            window.addEventListener('resize', onResize);
+            window.addEventListener('click', onMouseClick);
+        }
+
+        function createFullCell() {
+            // Membrane
+            membrane = new THREE.Mesh(
+                new THREE.SphereGeometry(22, 64, 64),
+                new THREE.MeshPhongMaterial({ 
+                    color: 0x1e3a8a, transparent: true, opacity: 0.08, 
+                    shininess: 100, side: THREE.DoubleSide 
+                })
+            );
+            cellGroup.add(membrane);
+
+            // 1. Nucleus & Nucleolus
+            const nuc = new THREE.Mesh(new THREE.SphereGeometry(6, 48, 48), new THREE.MeshStandardMaterial({ color: DATA.Nucleus.color }));
+            nuc.userData = { id: 'Nucleus' };
+            cellGroup.add(nuc);
+            organelles.push(nuc);
+
+            const nucL = new THREE.Mesh(new THREE.SphereGeometry(1.6, 32, 32), new THREE.MeshStandardMaterial({ color: DATA.Nucleolus.color, emissive: DATA.Nucleolus.color, emissiveIntensity: 0.4 }));
+            nucL.position.set(2, 2, 2);
+            nucL.userData = { id: 'Nucleolus' };
+            cellGroup.add(nucL);
+            organelles.push(nucL);
+
+            // 2. Mitochondria (4 units)
+            for(let i=0; i<4; i++) {
+                const m = createMitoModel(DATA.Mito.color);
+                const a = (i/4) * Math.PI * 2;
+                m.position.set(Math.cos(a)*15, (Math.random()-0.5)*12, Math.sin(a)*15);
+                m.rotation.set(Math.random(), Math.random(), 0);
+                m.userData = { id: 'Mito' };
+                cellGroup.add(m);
+                organelles.push(m);
+            }
+
+            // 3. Ribosomes (Dust particles)
+            const riboGeo = new THREE.BufferGeometry();
+            const riboPos = new Float32Array(500 * 3);
+            for(let i=0; i<500*3; i++) riboPos[i] = (Math.random()-0.5) * 35;
+            riboGeo.setAttribute('position', new THREE.BufferAttribute(riboPos, 3));
+            const riboPoints = new THREE.Points(riboGeo, new THREE.PointsMaterial({ size: 0.15, color: DATA.Ribosome.color }));
+            riboPoints.userData = { id: 'Ribosome' };
+            cellGroup.add(riboPoints);
+            organelles.push(riboPoints);
+
+            // 4. ER Systems
+            for(let i=0; i<15; i++) {
+                const isRough = i < 9;
+                const er = new THREE.Mesh(
+                    new THREE.TorusGeometry(7 + i*0.4, 0.12, 12, 50, Math.PI * 0.7),
+                    new THREE.MeshStandardMaterial({ color: isRough ? DATA.ER_Rough.color : DATA.ER_Smooth.color, transparent: true, opacity: 0.5 })
+                );
+                er.rotation.x = Math.PI/2 + (Math.random()*0.1);
+                er.rotation.z = i * 0.4;
+                er.userData = { id: isRough ? 'ER_Rough' : 'ER_Smooth' };
+                cellGroup.add(er);
+                organelles.push(er);
+            }
+
+            // 5. Golgi
+            for(let i=0; i<6; i++) {
+                const g = new THREE.Mesh(new THREE.TorusGeometry(5, 0.3, 12, 40, Math.PI/2), new THREE.MeshStandardMaterial({ color: DATA.Golgi.color }));
+                g.position.set(-12, -8, 5 + i*0.8);
+                g.rotation.y = Math.PI/2;
+                g.userData = { id: 'Golgi' };
+                cellGroup.add(g);
+                organelles.push(g);
+            }
+
+            // 6. Lysosomes & Peroxisomes
+            for(let i=0; i<8; i++) {
+                const isLyso = i < 5;
+                const s = new THREE.Mesh(new THREE.SphereGeometry(0.8, 16, 16), new THREE.MeshStandardMaterial({ color: isLyso ? DATA.Lyso.color : DATA.Peroxisome.color }));
+                s.position.set((Math.random()-0.5)*30, (Math.random()-0.5)*30, (Math.random()-0.5)*30);
+                s.userData = { id: isLyso ? 'Lyso' : 'Peroxisome' };
+                cellGroup.add(s);
+                organelles.push(s);
+            }
+
+            // 7. Vacuoles
+            for(let i=0; i<2; i++) {
+                const v = new THREE.Mesh(new THREE.SphereGeometry(2, 24, 24), new THREE.MeshStandardMaterial({ color: DATA.Vacuole.color, transparent: true, opacity: 0.6 }));
+                v.position.set(12, -10, -10 + i*5);
+                v.userData = { id: 'Vacuole' };
+                cellGroup.add(v);
+                organelles.push(v);
+            }
+
+            // 8. Centrioles
+            const cen = createCenModel(DATA.Centriole.color);
+            cen.position.set(8, 8, -5);
+            cen.userData = { id: 'Centriole' };
+            cellGroup.add(cen);
+            organelles.push(cen);
+        }
+
+        function createMitoModel(col) {
+            // Fix: Replaced THREE.CapsuleGeometry with Cylinder + Spheres for compatibility
+            const g = new THREE.Group();
+            const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.8, 16), new THREE.MeshStandardMaterial({color: col}));
+            const sphereTop = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 16), new THREE.MeshStandardMaterial({color: col}));
+            const sphereBottom = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 16), new THREE.MeshStandardMaterial({color: col}));
+            
+            sphereTop.position.y = 0.9;
+            sphereBottom.position.y = -0.9;
+            
+            g.add(cylinder);
+            g.add(sphereTop);
+            g.add(sphereBottom);
+            return g;
+        }
+
+        function createCenModel(col) {
+            const g = new THREE.Group();
+            for(let i=0; i<2; i++) {
+                const c = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 2, 8), new THREE.MeshStandardMaterial({color: col}));
+                if(i===1) { c.rotation.x = Math.PI/2; c.position.set(0, 1, 1); }
+                g.add(c);
+            }
+            return g;
+        }
+
+        function populateList() {
+            const list = document.getElementById('organelle-list');
+            Object.keys(DATA).forEach(key => {
+                const item = DATA[key];
+                const div = document.createElement('div');
+                div.className = 'group bg-white/5 p-4 rounded-2xl flex items-center gap-4 cursor-pointer hover:bg-blue-500/20 transition-all border border-white/5 hover:border-blue-500/40 pointer-events-auto';
+                div.innerHTML = `
+                    <div class="text-2xl opacity-70 group-hover:opacity-100 transition-all">${item.icon}</div>
+                    <div class="flex-1">
+                        <div class="text-[12px] font-bold text-slate-300 group-hover:text-white transition-colors">${item.name}</div>
+                        <div class="h-[1px] bg-blue-500/10 mt-2 overflow-hidden w-full"><div class="h-full bg-blue-500 w-0 group-hover:w-full transition-all duration-700"></div></div>
+                    </div>
+                `;
+                div.onclick = () => showInfo(key);
+                list.appendChild(div);
+            });
+        }
+
+        function showInfo(id) {
+            const d = DATA[id];
+            const p = document.getElementById('info-panel');
+            p.classList.remove('hidden');
+            document.getElementById('info-title').innerText = d.name;
+            document.getElementById('info-icon').innerText = d.icon;
+            document.getElementById('bg-icon').innerText = d.icon;
+            document.getElementById('info-desc').innerText = d.desc;
+            document.getElementById('info-role').innerText = d.role;
+            document.getElementById('info-structure').innerText = d.structure;
+            
+            organelles.forEach(o => {
+                if(o.userData.id === id) {
+                    o.scale.setScalar(1.6);
+                    setTimeout(() => o.scale.setScalar(1), 600);
+                }
+            });
+            notify(`در حال بارگذاری جزئیات: ${d.name}`);
+        }
+
+        function closeInfo() { document.getElementById('info-panel').classList.add('hidden'); }
+
+        function changeMode(m) {
+            membrane.material.wireframe = (m === 'wire');
+            membrane.material.opacity = (m === 'xray') ? 0.04 : 0.08;
+            organelles.forEach(o => {
+                o.traverse(child => {
+                    if(child.material) {
+                        child.material.wireframe = (m === 'wire');
+                        child.material.transparent = (m === 'xray');
+                        child.material.opacity = (m === 'xray') ? 0.2 : 1;
+                    }
+                });
+            });
+            notify(`تغییر حالت به: ${m === 'normal' ? 'واقع‌گرا' : m === 'xray' ? 'اشعه ایکس' : 'شبکه‌ای'}`);
+        }
+
+        function injectNutrition() {
+            atp = Math.min(100, atp + 15);
+            document.getElementById('atp-b').style.width = atp + '%';
+            document.getElementById('atp-t').innerText = Math.floor(atp) + '%';
+            notify("تزریق مولکول‌های گلوکز انجام شد. سطح انرژی بهینه است.");
+        }
+
+        function notify(msg) {
+            const z = document.getElementById('notification-zone');
+            const t = document.createElement('div');
+            t.className = 'toast-msg';
+            t.innerText = msg;
+            z.appendChild(t);
+            setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 400); }, 3000);
+        }
+
+        // --- Exam Engine ---
+        let score = 0;
+        function runExam() {
+            document.getElementById('exam-modal').classList.replace('hidden', 'flex');
+            nextQuestion();
+        }
+        function stopExam() { document.getElementById('exam-modal').classList.replace('flex', 'hidden'); }
+
+        function nextQuestion() {
+            const keys = Object.keys(DATA);
+            const correctKey = keys[Math.floor(Math.random() * keys.length)];
+            const q = DATA[correctKey];
+            document.getElementById('q-text').innerText = q.q;
+            const optsDiv = document.getElementById('options');
+            optsDiv.innerHTML = '';
+
+            const choices = [correctKey];
+            while(choices.length < 4) {
+                const r = keys[Math.floor(Math.random() * keys.length)];
+                if(!choices.includes(r)) choices.push(r);
+            }
+            choices.sort(() => Math.random() - 0.5);
+
+            choices.forEach(c => {
+                const b = document.createElement('button');
+                b.className = 'w-full text-right p-5 bg-white/5 hover:bg-indigo-600/20 border border-white/5 rounded-2xl transition-all text-sm font-bold flex items-center justify-between group';
+                b.innerHTML = `<span>${DATA[c].name}</span><span class="text-indigo-500 opacity-0 group-hover:opacity-100 transition-all">انتخاب ↵</span>`;
+                b.onclick = () => {
+                    if(c === correctKey) {
+                        score += 10;
+                        document.getElementById('score').innerText = score;
+                        b.classList.add('bg-emerald-500/20', 'border-emerald-500/40');
+                        setTimeout(nextQuestion, 600);
+                    } else {
+                        b.classList.add('bg-red-500/20', 'border-red-500/40');
+                        notify("خطا در تحلیل! دوباره تلاش کنید.");
+                    }
+                };
+                optsDiv.appendChild(b);
+            });
+        }
+
+        function onMouseClick(e) {
+            const mouse = new THREE.Vector2((e.clientX/window.innerWidth)*2-1, -(e.clientY/window.innerHeight)*2+1);
+            const ray = new THREE.Raycaster();
+            ray.setFromCamera(mouse, camera);
+            const hits = ray.intersectObjects(organelles, true);
+            if(hits.length > 0) {
+                let obj = hits[0].object;
+                while(obj && !obj.userData.id) obj = obj.parent;
+                if(obj) showInfo(obj.userData.id);
+            }
+        }
+
+        function onResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            cellGroup.rotation.y += 0.0008;
+            atp = Math.max(10, atp - 0.002);
+            document.getElementById('atp-b').style.width = atp + '%';
+            document.getElementById('atp-t').innerText = Math.floor(atp) + '%';
+            renderer.render(scene, camera);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
